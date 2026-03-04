@@ -2,6 +2,6 @@
     "name": "Lorebook Query",
     "description": "Allows the chatbot to query lorebook entries via tool calls. Includes global and per-character configurations.",
     "version": "1.0.0",
-    "author": "Assistant",
+    "author": "Onirio",
     "main": "index.js"
 }
