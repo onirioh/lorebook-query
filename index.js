@@ -4,7 +4,7 @@ import { eventSource, event_types } from '../../../../script.js';
 import { world_info } from '../../../world_info.js';
 import { registerTool } from '../../../tools.js';
 
-const MODULE_NAME = 'lorebook_tool_caller';
+const MODULE_NAME = 'lorebook_query';
 const DEFAULT_TOOL_NAME = 'query_lorebook';
 const DEFAULT_TOOL_DESC = 'Search the lorebook or world info for a specific keyword or topic to get background information.';
 
