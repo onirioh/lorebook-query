@@ -1,0 +1,7 @@
+{
+    "name": "Lorebook Tool Caller",
+    "description": "Allows the chatbot to query lorebook entries via tool calls. Includes global and per-character configurations.",
+    "version": "1.0.0",
+    "author": "Assistant",
+    "main": "index.js"
+}

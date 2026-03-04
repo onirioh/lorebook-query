@@ -1,0 +1,19 @@
+.lorebook-tool-settings {
+    padding: 10px;
+}
+
+.lorebook-tool-settings hr {
+    margin: 15px 0;
+    border-top: 1px solid var(--SmartThemeBorderColor);
+}
+
+.lorebook-tool-settings h4 {
+    margin-bottom: 10px;
+    color: var(--SmartThemeBodyColor);
+}
+
+.lorebook-tool-settings small {
+    display: block;
+    margin-top: 5px;
+    color: var(--SmartThemeQuoteColor);
+}
