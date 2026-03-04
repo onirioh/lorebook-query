@@ -1,203 +1,173 @@
-import { extension_settings } from '../../../extensions.js';
-import { characters, this_chid } from '../../../main.js';
-import { eventSource, event_types } from '../../../../script.js';
-import { world_info } from '../../../world_info.js';
-import { registerTool } from '../../../tools.js';
+import { extension_settings, getContext } from "../../../extensions.js";
+import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
-const MODULE_NAME = 'lorebook_query';
-const DEFAULT_TOOL_NAME = 'query_lorebook';
-const DEFAULT_TOOL_DESC = 'Search the lorebook or world info for a specific keyword or topic to get background information.';
+const extensionName = "st-lorebook-tool";
+const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
-// Setup default settings if they don't exist
-if (!extension_settings[MODULE_NAME]) {
-    extension_settings[MODULE_NAME] = {
-        globalEnabled: true,
-        characters: {}
-    };
-}
-
-// Helper to get the current character's unique identifier (avatar string)
-function getCharAvatar() {
-    if (this_chid === undefined || !characters[this_chid]) return null;
-    return characters[this_chid].avatar;
-}
-
-// Helper to fetch or initialize per-character settings
-function getCharSettings() {
-    const avatar = getCharAvatar();
-    if (!avatar) return null;
-    
-    if (!extension_settings[MODULE_NAME].characters[avatar]) {
-        extension_settings[MODULE_NAME].characters[avatar] = {
-            enabled: true,
-            toolName: DEFAULT_TOOL_NAME,
-            toolDescription: DEFAULT_TOOL_DESC
-        };
-    }
-    return extension_settings[MODULE_NAME].characters[avatar];
-}
-
-// The core search logic for the tool
-async function performLorebookSearch(query) {
-    if (!query) return "Error: No search query provided.";
-    
-    const q = query.toLowerCase().trim();
-    let results = [];
-    
-    // Iterate through active SillyTavern world_info array
-    for (const entry of world_info) {
-        const keys = entry.key || [];
-        const secondaryKeys = entry.keysecondary || [];
-        const allKeys = [...keys, ...secondaryKeys].map(k => k.toLowerCase().trim());
-        
-        // Match if the query is in the key, or the key is in the query
-        const matches = allKeys.some(k => k.includes(q) || q.includes(k));
-        
-        if (matches) {
-            results.push(`**Lore Entry**: ${entry.content}`);
-        }
-    }
-    
-    if (results.length === 0) {
-        return `No lorebook entries found matching "${query}".`;
-    }
-    
-    // Limit to top 5 results to prevent massive context overflow
-    if (results.length > 5) {
-        results = results.slice(0, 5);
-        results.push(`*(Note: More entries matched, but results were truncated for brevity. Try a more specific query.)*`);
-    }
-    
-    return `Lorebook results for "${query}":\n\n${results.join('\n\n---\n\n')}`;
-}
-
-// -------------------------------------------------------------------------
-// Tool Definition
-// -------------------------------------------------------------------------
-// We register this object ONCE. By modifying its properties directly, 
-// SillyTavern will automatically send the updated name/desc to the LLM.
-
-const lorebookTool = {
-    name: DEFAULT_TOOL_NAME,
-    description: DEFAULT_TOOL_DESC,
-    parameters: {
-        type: "object",
-        properties: {
-            query: {
-                type: "string",
-                description: "The keyword or topic to search for in the lorebook."
-            }
-        },
-        required: ["query"]
-    },
-    callback: async (args) => {
-        return await performLorebookSearch(args.query);
-    },
-    getIsEnabled: () => {
-        // Master override
-        if (!extension_settings[MODULE_NAME].globalEnabled) return false;
-        
-        // Per-character override
-        const charSettings = getCharSettings();
-        return charSettings ? charSettings.enabled : false;
-    }
+// Ajustes por defecto para un nuevo personaje
+const defaultCharSettings = {
+    disabled: false,
+    toolName: "consultar_lorebook",
+    toolDesc: "Consulta el lorebook para buscar información relevante sobre el mundo, los personajes o los conceptos."
 };
 
-// -------------------------------------------------------------------------
-// UI & Event Hooks
-// -------------------------------------------------------------------------
-
-function saveSettings() {
-    // Standard ST global function for saving settings to settings.json
-    if (typeof saveSettingsDebounced === 'function') {
-        saveSettingsDebounced();
+// Inicializa el objeto de ajustes si es la primera vez
+function initSettings() {
+    if (!extension_settings[extensionName]) {
+        extension_settings[extensionName] = {
+            global_disable: false,
+            characters: {} // Guardaremos los ajustes usando el ID del personaje como llave
+        };
     }
 }
 
-function updateToolProperties() {
-    const charSettings = getCharSettings();
-    if (charSettings) {
-        // Enforce valid tool names (no spaces, special chars)
-        const safeName = (charSettings.toolName || DEFAULT_TOOL_NAME).replace(/[^a-zA-Z0-9_-]/g, '');
-        lorebookTool.name = safeName;
-        lorebookTool.description = charSettings.toolDescription || DEFAULT_TOOL_DESC;
-    }
-}
+let currentCharacterId = null;
+let registeredToolName = null; // Para recordar qué herramienta desregistrar
 
-function refreshUI() {
-    const isGlobalEnabled = extension_settings[MODULE_NAME].globalEnabled;
-    $('#lbtc_global_enable').prop('checked', isGlobalEnabled);
-
-    const charSettings = getCharSettings();
-    if (charSettings) {
-        $('#lbtc_char_settings_container').show();
-        $('#lbtc_no_char_warning').hide();
-        
-        $('#lbtc_char_enable').prop('checked', charSettings.enabled);
-        $('#lbtc_tool_name').val(charSettings.toolName);
-        $('#lbtc_tool_desc').val(charSettings.toolDescription);
-    } else {
-        $('#lbtc_char_settings_container').hide();
-        $('#lbtc_no_char_warning').show();
-    }
-}
-
-async function init() {
-    debugger;
-    console.log("PENE");
-    // Load the UI template and append it to the extensions settings menu
-    const html = await $.get(`${extension_folder}/lorebook-tool-caller/index.html`);
-    $('#extensions_settings').append(html);
-
-    // Register the Tool with SillyTavern
-    registerTool(lorebookTool);
-
-    // Initial UI Setup
-    refreshUI();
-    updateToolProperties();
-
-    // -- Event Listeners for UI --
+// Carga los ajustes del personaje actual en la interfaz
+function loadCharacterSettings() {
+    const context = getContext();
+    currentCharacterId = context.characterId;
     
-    $('#lbtc_global_enable').on('change', function() {
-        extension_settings[MODULE_NAME].globalEnabled = $(this).is(':checked');
-        saveSettings();
-    });
-
-    $('#lbtc_char_enable').on('change', function() {
-        const charSettings = getCharSettings();
-        if (charSettings) {
-            charSettings.enabled = $(this).is(':checked');
-            saveSettings();
-        }
-    });
-
-    $('#lbtc_tool_name').on('input', function() {
-        const charSettings = getCharSettings();
-        if (charSettings) {
-            charSettings.toolName = $(this).val();
-            updateToolProperties();
-            saveSettings();
-        }
-    });
-
-    $('#lbtc_tool_desc').on('input', function() {
-        const charSettings = getCharSettings();
-        if (charSettings) {
-            charSettings.toolDescription = $(this).val();
-            updateToolProperties();
-            saveSettings();
-        }
-    });
-
-    // When the user switches to a different character card
-    eventSource.on(event_types.CHAT_CHANGED, () => {
-        refreshUI();
-        updateToolProperties();
-    });
+    // Si no hay personaje seleccionado, no hacemos nada
+    if (currentCharacterId === undefined || currentCharacterId === null) return;
+    
+    const settings = extension_settings[extensionName];
+    if (!settings.characters[currentCharacterId]) {
+        // Asignamos los valores por defecto si el personaje no tiene configuración previa
+        settings.characters[currentCharacterId] = { ...defaultCharSettings };
+    }
+    
+    const charSettings = settings.characters[currentCharacterId];
+    
+    // Actualizamos el HTML
+    $("#loretool_char_disable").prop("checked", charSettings.disabled);
+    $("#loretool_name").val(charSettings.toolName);
+    $("#loretool_desc").val(charSettings.toolDesc);
+    
+    updateToolRegistration();
 }
 
-// Wait for SillyTavern extensions to be fully loaded before initializing
+// Guarda los ajustes de la interfaz cuando el usuario escribe o hace clic
+function saveCharacterSettings() {
+    if (currentCharacterId === undefined || currentCharacterId === null) return;
+    
+    const settings = extension_settings[extensionName];
+    
+    settings.characters[currentCharacterId] = {
+        disabled: Boolean($("#loretool_char_disable").prop("checked")),
+        toolName: String($("#loretool_name").val()).trim() || "consultar_lorebook",
+        toolDesc: String($("#loretool_desc").val()).trim() || defaultCharSettings.toolDesc
+    };
+    
+    saveSettingsDebounced();
+    updateToolRegistration();
+}
+
+// Lógica de búsqueda simplificada en el World Info (Lorebook) de SillyTavern
+function queryLorebook(keyword) {
+    let results = [];
+    // SillyTavern guarda las entradas del lorebook activo en la variable global world_info
+    if (window.world_info && Array.isArray(window.world_info)) {
+        for (let entry of window.world_info) {
+             // Comprobamos si la palabra clave coincide con las llaves (keys) de la entrada
+             if (entry.keys && entry.keys.some(k => k.toLowerCase().includes(keyword.toLowerCase()))) {
+                 results.push(entry.content);
+             }
+        }
+    }
+    
+    if (results.length > 0) {
+        return results.join("\n\n");
+    }
+    return `No se encontró información en el lorebook para la palabra clave: ${keyword}`;
+}
+
+// Registra (o desregistra) la herramienta dependiendo de los ajustes
+function updateToolRegistration() {
+    const context = getContext();
+    
+    // Desregistra la herramienta anterior para evitar duplicados
+    if (registeredToolName && context.isToolCallingSupported && context.isToolCallingSupported()) {
+        context.unregisterFunctionTool(registeredToolName);
+        registeredToolName = null;
+    }
+    
+    const settings = extension_settings[extensionName];
+    
+    // 1. Verificación: ¿Está la extensión desactivada globalmente?
+    if (settings.global_disable) return;
+    // 2. Verificación: ¿Hay un personaje activo?
+    if (currentCharacterId === undefined || currentCharacterId === null) return;
+    
+    const charSettings = settings.characters[currentCharacterId];
+    
+    // 3. Verificación: ¿Está desactivado para este personaje en específico?
+    if (charSettings.disabled) return;
+    
+    // 4. Verificación: ¿La API actual soporta llamadas a herramientas?
+    if (!context.isToolCallingSupported || !context.isToolCallingSupported()) return;
+    
+    const toolName = charSettings.toolName;
+    const toolDesc = charSettings.toolDesc;
+    
+    // Registramos la herramienta para la IA
+    context.registerFunctionTool({
+        name: toolName,
+        description: toolDesc,
+        parameters: {
+            type: "object",
+            properties: {
+                keyword: {
+                    type: "string",
+                    description: "La palabra clave o concepto a buscar en el lorebook."
+                }
+            },
+            required: ["keyword"]
+        },
+        execute: (args) => {
+            const result = queryLorebook(args.keyword);
+            console.log(`[Lorebook Tool] La IA consultó: ${args.keyword}`);
+            return result;
+        },
+        formatMessage: (args) => {
+            // Este es el mensaje que se mostrará al usuario como "Toast" o notificación
+            return `Consultando el lorebook por: ${args.keyword}`;
+        }
+    });
+    
+    registeredToolName = toolName;
+}
+
+// Guarda la configuración global
+function onGlobalInput() {
+    extension_settings[extensionName].global_disable = Boolean($("#loretool_global_disable").prop("checked"));
+    saveSettingsDebounced();
+    updateToolRegistration();
+}
+
+// Función principal que se ejecuta al cargar la extensión
 jQuery(async () => {
-  console.log("AAAAAAAAAAAA");
-    await init();
+    initSettings();
+    
+    // Cargamos la interfaz desde el archivo HTML
+    const settingsHtml = await $.get(`${extensionFolderPath}/settings.html`);
+    $("#extensions_settings").append(settingsHtml);
+    
+    // Configuramos los estados iniciales de la UI global
+    $("#loretool_global_disable").prop("checked", extension_settings[extensionName].global_disable);
+    
+    // Escuchamos cambios en la interfaz
+    $("#loretool_global_disable").on("input", onGlobalInput);
+    $("#loretool_char_disable").on("input", saveCharacterSettings);
+    $("#loretool_name").on("input", saveCharacterSettings);
+    $("#loretool_desc").on("input", saveCharacterSettings);
+    
+    // Detectamos cuándo se cambia de chat/personaje para refrescar el menú y la herramienta
+    if (window.eventSource) {
+        window.eventSource.on(window.event_types.CHAT_CHANGED, loadCharacterSettings);
+    }
+    
+    // Cargamos la configuración del personaje al iniciar por primera vez
+    loadCharacterSettings();
 });

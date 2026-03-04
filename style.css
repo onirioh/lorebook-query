@@ -1,19 +1,12 @@
-.lorebook-tool-settings {
-    padding: 10px;
+.lorebook-tool-settings .flex-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
 }
-
-.lorebook-tool-settings hr {
-    margin: 15px 0;
-    border-top: 1px solid var(--SmartThemeBorderColor);
+.lorebook-tool-settings label {
+    flex-grow: 1;
 }
-
-.lorebook-tool-settings h4 {
-    margin-bottom: 10px;
-    color: var(--SmartThemeBodyColor);
-}
-
-.lorebook-tool-settings small {
-    display: block;
-    margin-top: 5px;
-    color: var(--SmartThemeQuoteColor);
+.lorebook-tool-settings textarea.text_pole {
+    resize: vertical;
 }
